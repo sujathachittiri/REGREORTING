@@ -1,0 +1,61 @@
+{
+  "project": "Intelligent Data Quality Monitoring for Regulatory Reporting",
+  "version": "1.0",
+  "description": "Configuration for rule-based data quality checks and ML thresholds inspired by PRA, ECB and EBA guidelines",
+
+  "critical_fields": [
+    "Account_ID",
+    "Report_Date",
+    "Exposure_Amount",
+    "Risk_Weight",
+    "Capital_Requirement",
+    "Country_Code",
+    "Currency",
+    "Counterparty_Type"
+  ],
+
+  "code_lists": {
+    "allowed_currencies": ["INR", "USD", "GBP", "EUR", "HKD", "SGD"],
+    "iso_country_subset": ["IN", "US", "GB", "DE", "FR", "ES", "IT", "NL", "HK", "SG"]
+  },
+
+  "bounds": {
+    "min_exposure": 0,
+    "risk_weight_min": 0.0,
+    "risk_weight_max": 1.0,
+    "tenor_min_months": 1,
+    "tenor_max_months": 360
+  },
+
+  "capital_check": {
+    "capital_formula_multiplier": 0.08,
+    "capital_tolerance_percentage": 0.05,
+    "allow_zero_reported_capital": false
+  },
+
+  "duplication": {
+    "duplicate_key": ["Account_ID", "Report_Date"],
+    "duplicate_tolerance_percentage": 0.0
+  },
+
+  "outlier_detection": {
+    "method": "country_median_multiple",
+    "multiple": 10
+  },
+
+  "ml_thresholds": {
+    "final_ml_anomaly_threshold": 0.8,
+    "isolation_forest_weight": 0.5,
+    "autoencoder_weight": 0.5
+  },
+
+  "operational_notes": {
+    "threshold_definition": "Numeric thresholds are proxy values derived from industry best practices. Regulators do not prescribe fixed thresholds.",
+    "regulatory_alignment": [
+      "PRA SS1/23",
+      "EBA ITS on Supervisory Reporting",
+      "ECB guidance on data quality and ML usage"
+    ],
+    "data_privacy": "All datasets used are synthetic and anonymized for academic purposes"
+  }
+}
