@@ -1,5 +1,12 @@
 import numpy as np
 import pandas as pd
+import os
+
+# ----------------------------
+# Parameters
+# ----------------------------
+N_RECORDS = 8000
+OUTPUT_PATH = "data/raw/realistic_regulatory_data.csv"
 
 def generate_regulatory_data(n=8000, seed=42):
     np.random.seed(seed)
@@ -105,8 +112,9 @@ def generate_regulatory_data(n=8000, seed=42):
 
 
 if __name__ == "__main__":
-    df = generate_regulatory_data(n=8000)
-    df.to_csv("data/raw/realistic_regulatory_data.csv", index=False)
+    df = generate_regulatory_data(n=N_RECORDS)
+    os.makedirs("data/raw", exist_ok=True)
+    df.to_csv(OUTPUT_PATH, index=False)
     print("Generated dataset shape:", df.shape)
     print("Rule anomalies:", df["Injected_Rule_Anomaly"].sum())
     print("ML-only anomalies:", df["Injected_ML_Only_Anomaly"].sum())
