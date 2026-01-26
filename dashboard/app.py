@@ -1,138 +1,160 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 
 # -----------------------------
 # Page config
 # -----------------------------
 st.set_page_config(
-    page_title="Intelligent Data Quality Monitoring",
+    page_title="Intelligent Data Quality Monitoring for Regulatory Reporting",
     layout="wide"
 )
 
-st.title("Intelligent Data Quality Monitoring for Regulatory Reporting")
-st.caption("Hybrid Rule-based + ML-driven Anomaly Detection (IF + Autoencoder)")
+st.title("📊 Intelligent Data Quality Monitoring for Regulatory Reporting")
 
 # -----------------------------
 # Load data
 # -----------------------------
+DATA_PATH = "data/processed/final_scored_data.csv"
+
 @st.cache_data
 def load_data():
-    return pd.read_csv("data/processed/merged_dq_ml_report.csv")
+    return pd.read_csv(DATA_PATH)
 
 df = load_data()
 
 # -----------------------------
-# Sidebar filters
+# Basic derived columns
 # -----------------------------
-st.sidebar.header("Filters")
+df["FLAG_SOURCE"] = "Clean"
+df.loc[(df["RULE_ANOMALY_FLAG"] == 1) & (df["ML_ANOMALY_FLAG"] == 0), "FLAG_SOURCE"] = "Rule"
+df.loc[(df["RULE_ANOMALY_FLAG"] == 0) & (df["ML_ANOMALY_FLAG"] == 1), "FLAG_SOURCE"] = "ML"
+df.loc[(df["RULE_ANOMALY_FLAG"] == 1) & (df["ML_ANOMALY_FLAG"] == 1), "FLAG_SOURCE"] = "Rule + ML"
 
-country = st.sidebar.multiselect(
-    "Country",
-    options=df["Country_Code"].unique(),
-    default=df["Country_Code"].unique()
-)
+# Risk bucket based on ensemble score
+q99 = df["ENSEMBLE_SCORE"].quantile(0.99)
+q95 = df["ENSEMBLE_SCORE"].quantile(0.95)
 
-final_flag = st.sidebar.selectbox(
-    "Final Anomaly Flag",
-    options=["All", 0, 1]
-)
+def risk_bucket(x):
+    if x >= q99:
+        return "High"
+    elif x >= q95:
+        return "Medium"
+    else:
+        return "Low"
 
-filtered_df = df[df["Country_Code"].isin(country)]
-
-if final_flag != "All":
-    filtered_df = filtered_df[filtered_df["FINAL_ANOMALY_FLAG"] == final_flag]
+df["RISK_BUCKET"] = df["ENSEMBLE_SCORE"].apply(risk_bucket)
 
 # -----------------------------
-# KPI Section
+# KPI Row
 # -----------------------------
-total_records = len(filtered_df)
-total_anomalies = filtered_df["FINAL_ANOMALY_FLAG"].sum()
-dq_anomalies = filtered_df["DQ_RULE_ANOMALY"].sum()
-ml_anomalies = filtered_df["ML_Anomaly_Flag"].sum()
+total = len(df)
+rule_cnt = int(df["RULE_ANOMALY_FLAG"].sum())
+ml_cnt = int(df["ML_ANOMALY_FLAG"].sum())
+final_cnt = int(df["FINAL_ANOMALY_FLAG"].sum())
+ml_only = int(((df["RULE_ANOMALY_FLAG"] == 0) & (df["ML_ANOMALY_FLAG"] == 1)).sum())
 
-col1, col2, col3, col4 = st.columns(4)
+c1, c2, c3, c4, c5 = st.columns(5)
 
-col1.metric("Total Records", total_records)
-col2.metric("Final Anomalies", int(total_anomalies))
-col3.metric("DQ Rule Violations", int(dq_anomalies))
-col4.metric("ML-only Anomalies", int(ml_anomalies))
+c1.metric("Total Records", total)
+c2.metric("Rule Anomalies", rule_cnt)
+c3.metric("ML Anomalies", ml_cnt)
+c4.metric("Final Anomalies", final_cnt)
+c5.metric("ML-only Anomalies", ml_only)
 
 st.divider()
 
 # -----------------------------
-# Anomaly Trend
+# Distribution charts
 # -----------------------------
-st.subheader("Anomaly Trend Over Time")
+st.subheader("📈 Anomaly Distribution")
 
-trend_df = (
-    filtered_df
-    .groupby("Report_Date")["FINAL_ANOMALY_FLAG"]
-    .sum()
-    .reset_index()
-)
+dist_df = df["FLAG_SOURCE"].value_counts().reset_index()
+dist_df.columns = ["Source", "Count"]
 
-st.line_chart(trend_df.set_index("Report_Date"))
+st.bar_chart(dist_df.set_index("Source"))
+
+st.divider()
 
 # -----------------------------
-# Severity Distribution
+# Top risky records
 # -----------------------------
-st.subheader("Anomaly Severity Distribution")
+st.subheader("🔥 Top High-Risk Records (by ML Ensemble Score)")
 
-st.bar_chart(
-    filtered_df["ANOMALY_SEVERITY"].value_counts().sort_index()
-)
+top_n = st.slider("Select Top N Records", min_value=10, max_value=200, value=50, step=10)
 
-# -----------------------------
-# Detailed Table
-# -----------------------------
-st.subheader("Anomalous Records (Drill-down View)")
+top_df = df.sort_values("ENSEMBLE_SCORE", ascending=False).head(top_n)
 
-columns_to_show = [
+show_cols = [
     "Account_ID",
-    "Report_Date",
     "Country_Code",
+    "Currency",
+    "Counterparty_Type",
+    "Product_Type",
     "Exposure_Amount",
     "Risk_Weight",
-    "DQ_RULE_SCORE",
-    "ML_Anomaly_Score",
-    "ANOMALY_SEVERITY",
-    "FINAL_ANOMALY_FLAG"
+    "Capital_Requirement",
+    "ENSEMBLE_SCORE",
+    "FLAG_SOURCE",
+    "RISK_BUCKET"
 ]
 
+existing_cols = [c for c in show_cols if c in top_df.columns]
+
+st.dataframe(top_df[existing_cols], width='stretch')
+
+st.divider()
+
+# -----------------------------
+# Filters
+# -----------------------------
+st.subheader("🔎 Filter & Investigate Records")
+
+flag_filter = st.multiselect(
+    "Filter by Flag Source",
+    options=df["FLAG_SOURCE"].unique().tolist(),
+    default=df["FLAG_SOURCE"].unique().tolist()
+)
+
+risk_filter = st.multiselect(
+    "Filter by Risk Bucket",
+    options=df["RISK_BUCKET"].unique().tolist(),
+    default=df["RISK_BUCKET"].unique().tolist()
+)
+
+filtered = df[
+    (df["FLAG_SOURCE"].isin(flag_filter)) &
+    (df["RISK_BUCKET"].isin(risk_filter))
+]
+
+st.write("Filtered rows:", len(filtered))
+
 st.dataframe(
-    filtered_df[columns_to_show]
-    .sort_values("ANOMALY_SEVERITY", ascending=False),
-    #use_container_width=True
+    filtered.sort_values("ENSEMBLE_SCORE", ascending=False)[existing_cols],
     width='stretch'
 )
 
 # -----------------------------
-# Explainability Section
+# Explanation section
 # -----------------------------
-st.subheader("Explainability (Conceptual)")
+st.divider()
+st.subheader("ℹ️ How to Interpret This Dashboard")
 
-st.info(
-    """
-    This dashboard provides transparent and auditable explanations for all detected anomalies.
+st.markdown("""
+**Rule Anomalies**  
+Detected using deterministic regulatory and data quality rules (missing values, invalid codes, duplicates, capital formula violations, etc.)
 
-    Rule-based explainability:
-    Deterministic data quality rules identify explicit regulatory violations such as missing
-    mandatory fields, invalid reference data, negative exposure values, duplicates, and
-    threshold breaches. These violations are reflected in the rule-based score.
+**ML Anomalies**  
+Detected using an ensemble of unsupervised models (Isolation Forest, Autoencoder, PCA, LOF, OCSVM) that learn normal data patterns and flag unusual records.
 
-    Machine learning explainability:
-    ML anomaly scores quantify how much a record deviates from learned historical data
-    patterns, highlighting unusual or unexpected behaviour.
+**ML-only Anomalies**  
+These are records **not caught by any rule** but flagged by ML based on multivariate and behavioral patterns.  
+➡️ This demonstrates the **additional value of AI/ML beyond rule-based checks**.
 
-    Decision transparency:
-    A record is flagged as anomalous when it violates at least one data quality rule or when
-    its ML anomaly score exceeds the defined threshold.
-    """
-)
+**Risk Buckets**  
+Based on ML Ensemble Score percentile:
+- High = Top 1%
+- Medium = 95–99 percentile
+- Low = Remaining
+""")
 
-st.caption(
-    "Records with higher anomaly severity require higher priority investigation based on combined rule violations and ML anomaly scores."
-)
-
-st.success("Dashboard loaded successfully")
+st.success("✅ Dashboard loaded successfully from final_scored_data.csv")
