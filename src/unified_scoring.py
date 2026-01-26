@@ -1,80 +1,59 @@
-import pandas as pd
-import json
 import os
-from sklearn.preprocessing import MinMaxScaler
+import pandas as pd
 
 # -----------------------------
-# Load config
+# Paths
 # -----------------------------
-with open("dq_config.json", "r") as f:
-    CONFIG = json.load(f)
+RULE_PATH = "data/processed/processed_data.csv"
+ML_PATH = "data/processed/model_scores.csv"
+OUTPUT_PATH = "data/processed/final_scored_data.csv"
+
+os.makedirs("data/processed", exist_ok=True)
 
 # -----------------------------
-# Load inputs
+# Load data
 # -----------------------------
-dq_df = pd.read_csv("data/processed/dq_report.csv")
-ml_df = pd.read_csv("data/processed/model_scores.csv")
+df_rules = pd.read_csv(RULE_PATH)
+df_ml = pd.read_csv(ML_PATH)
 
 # -----------------------------
-# Merge DQ + ML outputs
+# Create join key
 # -----------------------------
-df = dq_df.merge(
-    ml_df[
-        [
-            "Account_ID",
-            "IF_Score",
-            "AE_Score"
-        ]
-    ],
-    on="Account_ID",
-    how="left"
-)
+# We assume ROW_ID in ML corresponds to Account_ID or row index
+
+if "Account_ID" in df_rules.columns:
+    df_rules["ROW_ID"] = df_rules["Account_ID"]
+else:
+    df_rules["ROW_ID"] = df_rules.index
 
 # -----------------------------
-# Normalize ML scores
+# Merge
 # -----------------------------
-scaler = MinMaxScaler()
-df[["IF_Score_Norm", "AE_Score_Norm"]] = scaler.fit_transform(
-    df[["IF_Score", "AE_Score"]]
-)
+df = df_rules.merge(df_ml, on="ROW_ID", how="left")
 
-# -----------------------------
-# Hybrid ML anomaly score
-# -----------------------------
-if_weight = CONFIG["ml_thresholds"]["isolation_forest_weight"]
-ae_weight = CONFIG["ml_thresholds"]["autoencoder_weight"]
-
-df["ML_Anomaly_Score"] = (
-    if_weight * df["IF_Score_Norm"] +
-    ae_weight * df["AE_Score_Norm"]
-)
+# Safety fill (in case some rows missing)
+df["ML_SCORE"] = df["ML_SCORE"].fillna(0.0)
+df["ML_ANOMALY_FLAG"] = df["ML_ANOMALY_FLAG"].fillna(0).astype(int)
 
 # -----------------------------
 # Final anomaly decision
 # -----------------------------
-ml_threshold = CONFIG["ml_thresholds"]["final_ml_anomaly_threshold"]
-
-df["ML_Anomaly_Flag"] = (df["ML_Anomaly_Score"] > ml_threshold).astype(int)
-
 df["FINAL_ANOMALY_FLAG"] = (
-    (df["DQ_RULE_ANOMALY"] == 1) |
-    (df["ML_Anomaly_Flag"] == 1)
+    (df["RULE_ANOMALY_FLAG"] == 1) | (df["ML_ANOMALY_FLAG"] == 1)
 ).astype(int)
 
 # -----------------------------
-# Severity score (optional but strong)
+# Save
 # -----------------------------
-df["ANOMALY_SEVERITY"] = (
-    df["DQ_RULE_SCORE"] +
-    (df["ML_Anomaly_Score"] * 10)
-).round(2)
+df.to_csv(OUTPUT_PATH, index=False)
 
 # -----------------------------
-# Save output
+# Summary
 # -----------------------------
-os.makedirs("data/processed", exist_ok=True)
-df.to_csv("data/processed/merged_dq_ml_report.csv", index=False)
-
-print("Unified anomaly scoring completed")
-print("Output saved to data/processed/merged_dq_ml_report.csv")
-print(df[["FINAL_ANOMALY_FLAG"]].value_counts())
+print("=== UNIFIED SCORING SUMMARY ===")
+print("Rows:", len(df))
+print("Rule anomalies:", df["RULE_ANOMALY_FLAG"].sum())
+print("ML anomalies:", df["ML_ANOMALY_FLAG"].sum())
+print("Final anomalies:", df["FINAL_ANOMALY_FLAG"].sum())
+print("ML-only anomalies:", ((df["RULE_ANOMALY_FLAG"] == 0) & (df["ML_ANOMALY_FLAG"] == 1)).sum())
+print("Output written to:", OUTPUT_PATH)
