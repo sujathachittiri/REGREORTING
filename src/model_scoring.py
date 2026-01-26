@@ -18,7 +18,7 @@ from tensorflow.keras.callbacks import EarlyStopping
 # Paths
 # -----------------------------
 INPUT_PATH = "data/processed/processed_data.csv"
-OUTPUT_PATH = "data/processed/model_scores.csv"
+OUTPUT_PATH = "data/processed/model_scores_detailed.csv"
 
 os.makedirs("data/processed", exist_ok=True)
 
@@ -27,7 +27,7 @@ os.makedirs("data/processed", exist_ok=True)
 # -----------------------------
 df = pd.read_csv(INPUT_PATH)
 
-# Row identifier for joining later
+# Row identifier
 if "Account_ID" in df.columns:
     ids = df["Account_ID"].values
 else:
@@ -54,7 +54,7 @@ categorical_cols = X_df.select_dtypes(include=["object"]).columns.tolist()
 numerical_cols = X_df.select_dtypes(include=[np.number]).columns.tolist()
 
 # -----------------------------
-# Preprocessing (scaling + encoding)
+# Preprocessing
 # -----------------------------
 preprocessor = ColumnTransformer(
     transformers=[
@@ -66,7 +66,7 @@ preprocessor = ColumnTransformer(
 X = preprocessor.fit_transform(X_df)
 
 # -----------------------------
-# Handle missing values (CRITICAL)
+# Impute missing values
 # -----------------------------
 imputer = SimpleImputer(strategy="median")
 X = imputer.fit_transform(X)
@@ -90,7 +90,7 @@ ocsvm = OneClassSVM(nu=0.05, kernel="rbf", gamma="scale")
 ocsvm.fit(X)
 ocsvm_scores = -ocsvm.decision_function(X)
 
-# PCA (reconstruction error)
+# PCA
 pca = PCA(n_components=0.95, random_state=42)
 pca.fit(X)
 X_pca_rec = pca.inverse_transform(pca.transform(X))
@@ -116,10 +116,10 @@ ae.fit(
     verbose=0
 )
 
-ae_rec = np.mean(np.square(ae.predict(X, verbose=0)), axis=1)
+ae_scores = np.mean(np.square(ae.predict(X, verbose=0)), axis=1)
 
 # -----------------------------
-# Combine scores (ensemble)
+# Normalize scores
 # -----------------------------
 def normalize(s):
     return (s - s.min()) / (s.max() - s.min() + 1e-9)
@@ -128,10 +128,12 @@ score_if = normalize(if_scores)
 score_lof = normalize(lof_scores)
 score_ocsvm = normalize(ocsvm_scores)
 score_pca = normalize(pca_scores)
-score_ae = normalize(ae_rec)
+score_ae = normalize(ae_scores)
 
-# Weighted ensemble
-ML_SCORE = (
+# -----------------------------
+# Ensemble score
+# -----------------------------
+ENSEMBLE_SCORE = (
     0.3 * score_if +
     0.1 * score_lof +
     0.1 * score_ocsvm +
@@ -142,15 +144,20 @@ ML_SCORE = (
 # -----------------------------
 # Thresholding
 # -----------------------------
-threshold = np.quantile(ML_SCORE, 0.95)  # top 5%
-ML_ANOMALY_FLAG = (ML_SCORE >= threshold).astype(int)
+threshold = np.quantile(ENSEMBLE_SCORE, 0.95)
+ML_ANOMALY_FLAG = (ENSEMBLE_SCORE >= threshold).astype(int)
 
 # -----------------------------
-# Save output
+# Save detailed output
 # -----------------------------
 out_df = pd.DataFrame({
     "ROW_ID": ids,
-    "ML_SCORE": ML_SCORE,
+    "IF_SCORE": score_if,
+    "LOF_SCORE": score_lof,
+    "OCSVM_SCORE": score_ocsvm,
+    "PCA_SCORE": score_pca,
+    "AE_SCORE": score_ae,
+    "ENSEMBLE_SCORE": ENSEMBLE_SCORE,
     "ML_ANOMALY_FLAG": ML_ANOMALY_FLAG
 })
 
@@ -159,7 +166,7 @@ out_df.to_csv(OUTPUT_PATH, index=False)
 # -----------------------------
 # Summary
 # -----------------------------
-print("=== MODEL SCORING SUMMARY ===")
-print("Rows scored:", len(out_df))
+print("=== MODEL SCORING (DETAILED) SUMMARY ===")
+print("Rows:", len(out_df))
 print("ML anomalies flagged:", out_df["ML_ANOMALY_FLAG"].sum())
 print("Output written to:", OUTPUT_PATH)

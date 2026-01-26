@@ -1,0 +1,7 @@
+=== OVERLAP ANALYSIS ===
+Total rows: 8480
+True anomalies: 1247
+Rule-only anomalies: 1355
+ML-only anomalies: 322
+Detected by both: 102
+Final anomalies: 1779

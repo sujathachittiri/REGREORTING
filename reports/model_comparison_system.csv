@@ -1,0 +1,4 @@
+System,ROC_AUC,Precision@5%
+Rule-Based,0.9516367278149435,
+ML-Based (Ensemble),0.6334387376932621,0.375
+Hybrid (Rule + ML),0.9608736621146663,
