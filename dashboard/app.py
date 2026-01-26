@@ -114,12 +114,25 @@ st.subheader("Explainability (Conceptual)")
 
 st.info(
     """
-    • Rule-based flags explain *why* a record violates regulatory expectations  
-    • Isolation Forest supports SHAP-based explanations for anomaly drivers  
-    • Autoencoder reconstruction error highlights feature-level deviations  
+    This dashboard provides transparent and auditable explanations for all detected anomalies.
 
-    Explainability is critical for regulatory auditability.
+    Rule-based explainability:
+    Deterministic data quality rules identify explicit regulatory violations such as missing
+    mandatory fields, invalid reference data, negative exposure values, duplicates, and
+    threshold breaches. These violations are reflected in the rule-based score.
+
+    Machine learning explainability:
+    ML anomaly scores quantify how much a record deviates from learned historical data
+    patterns, highlighting unusual or unexpected behaviour.
+
+    Decision transparency:
+    A record is flagged as anomalous when it violates at least one data quality rule or when
+    its ML anomaly score exceeds the defined threshold.
     """
+)
+
+st.caption(
+    "Records with higher anomaly severity require higher priority investigation based on combined rule violations and ML anomaly scores."
 )
 
 st.success("Dashboard loaded successfully")
