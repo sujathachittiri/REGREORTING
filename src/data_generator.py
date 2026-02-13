@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 import os
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # ----------------------------
 # Parameters
@@ -118,3 +120,38 @@ if __name__ == "__main__":
     print("Generated dataset shape:", df.shape)
     print("Rule anomalies:", df["Injected_Rule_Anomaly"].sum())
     print("ML-only anomalies:", df["Injected_ML_Only_Anomaly"].sum())
+
+    plt.figure(figsize=(6,4))
+    sns.boxplot(x=df["Exposure_Amount"])
+    plt.title("Boxplot of Exposure Amount (Raw Data)")
+    plt.tight_layout()
+    plt.show()
+
+    plt.figure(figsize=(6,4))
+    sns.boxplot(x=df["Risk_Weight"])
+    plt.title("Boxplot of Risk Weight (Raw Data)")
+    plt.tight_layout()
+    plt.show()
+
+    plt.figure(figsize=(6,4))
+    sns.boxplot(x=df["Capital_Requirement"])
+    plt.title("Boxplot of Capital Requirement (Raw Data)")
+    plt.tight_layout()
+    plt.show()
+
+    plt.figure(figsize=(6,4))
+    sns.boxplot(x=df["RWA"])
+    plt.title("Boxplot of Risk Weighted Asset (Raw Data)")
+    plt.tight_layout()
+    plt.show()
+
+    df["Exposure_to_Capital_Ratio"] = (
+    df["Exposure_Amount"] / df["Capital_Requirement"]
+    )
+
+    plt.figure(figsize=(6,4))
+    sns.boxplot(x=df["Exposure_to_Capital_Ratio"])
+    plt.title("Boxplot of Exposure-to-Capital Ratio (Raw Data)")
+    plt.tight_layout()
+    plt.show()
+
