@@ -1,7 +1,8 @@
 import os
 import pandas as pd
 import numpy as np
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, roc_curve, auc, confusion_matrix
+import matplotlib.pyplot as plt
 
 # -----------------------------
 # Paths
@@ -40,6 +41,29 @@ def safe_auc(y_true, y_score):
     except:
         return np.nan
 
+def plot_roc(y_true, scores, label):
+    fpr, tpr, _ = roc_curve(y_true, scores)
+    roc_auc_val = auc(fpr, tpr) # Renamed to avoid shadowing
+    plt.plot(fpr, tpr, label=f"{label} (AUC = {roc_auc_val:.2f})")
+
+def plot_conf_matrix(y_true, y_pred, title):
+    cm = confusion_matrix(y_true, y_pred)
+    plt.figure(figsize=(4,3))
+    sns.heatmap(
+        cm,
+        annot=True,
+        fmt="d",
+        cmap="Blues",
+        xticklabels=["Normal", "Anomaly"],
+        yticklabels=["Normal", "Anomaly"]
+    )
+    plt.xlabel("Predicted")
+    plt.ylabel("Actual")
+    plt.title(title)
+    plt.tight_layout()
+    plt.show()
+
+
 # -----------------------------
 # ========== PART 1: ML MODEL COMPARISON ==========
 # -----------------------------
@@ -57,11 +81,11 @@ models = {
 ml_results = []
 
 for name, col in models.items():
-    auc = safe_auc(ml_eval["TRUE_ANOMALY"], ml_eval[col])
+    current_auc = safe_auc(ml_eval["TRUE_ANOMALY"], ml_eval[col]) # Renamed local variable
     p5 = precision_at_k(ml_eval["TRUE_ANOMALY"].values, ml_eval[col].values, k=0.05)
     ml_results.append({
         "Model": name,
-        "ROC_AUC": auc,
+        "ROC_AUC": current_auc,
         "Precision@5%": p5
     })
 
@@ -117,6 +141,36 @@ print("=== ML MODEL COMPARISON ===")
 print(ml_results_df)
 print()
 
+print("=== ROC Curves for Individual ML Models ===")
+plt.figure(figsize=(6,5))
+
+plot_roc(df_final["TRUE_ANOMALY"], df_final["IF_SCORE"], "Isolation Forest")
+plot_roc(df_final["TRUE_ANOMALY"], df_final["AE_SCORE"], "Autoencoder")
+plot_roc(df_final["TRUE_ANOMALY"], df_final["LOF_SCORE"], "Local Outlier Factor")
+plot_roc(df_final["TRUE_ANOMALY"], df_final["OCSVM_SCORE"], "One Class SVM")
+plot_roc(df_final["TRUE_ANOMALY"], df_final["PCA_SCORE"], "PCA")
+
+plt.plot([0,1], [0,1], "k--")
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("ROC Curve – Individual ML Models")
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+print("=== ROC Curves for Ensemble Model ===")
+plt.figure(figsize=(6,5))
+
+plot_roc(df_final["TRUE_ANOMALY"], df_final["ENSEMBLE_SCORE"], "ML Ensemble")
+
+plt.plot([0,1], [0,1], "k--")
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("ROC Curve – ML Ensemble")
+plt.legend()
+plt.tight_layout()
+plt.show()
+
 print("=== SYSTEM COMPARISON ===")
 print(system_df)
 print()
@@ -125,6 +179,60 @@ print("=== OVERLAP ===")
 print("Rule-only:", rule_only)
 print("ML-only:", ml_only)
 print("Both:", both)
+
+print("=== ROC Curve for Hybrid Detection System ===")
+
+hybrid_score = df_final["FINAL_ANOMALY_FLAG"]
+
+plt.figure(figsize=(6,5))
+fpr, tpr, _ = roc_curve(df_final["TRUE_ANOMALY"], hybrid_score)
+fpr, tpr, _ = roc_curve(df_final["TRUE_ANOMALY"], df_final["RULE_ANOMALY_FLAG"])
+roc_auc = auc(fpr, tpr)
+
+plt.plot(fpr, tpr, label=f"Hybrid System (AUC = {roc_auc:.2f})")
+plt.plot([0,1], [0,1], "k--")
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("ROC Curve – Hybrid System")
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+print("=== ROC Curves for SYSTEM MODELS ===")
+plt.figure(figsize=(6,5))
+
+plot_roc(df_final["TRUE_ANOMALY"], df_final["RULE_ANOMALY_FLAG"], "Rule Based System")
+plot_roc(df_final["TRUE_ANOMALY"], df_final["ML_ANOMALY_FLAG"], "ML Based System")
+plot_roc(df_final["TRUE_ANOMALY"], df_final["FINAL_ANOMALY_FLAG"], "Hybrid System")
+
+plt.plot([0,1], [0,1], "k--")
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("ROC Curve – System Models")
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+print("=== CONFUSION MATRIX FOR SYSTEM MODELS ===")
+
+plot_conf_matrix(
+    df_final["TRUE_ANOMALY"],
+    df_final["RULE_ANOMALY_FLAG"],
+    "Confusion Matrix – Rule-Based Detection"
+)
+
+plot_conf_matrix(
+    df_final["TRUE_ANOMALY"],
+    df_final["ML_ANOMALY_FLAG"],
+    "Confusion Matrix – ML-Based Detection"
+)
+
+plot_conf_matrix(
+    df_final["TRUE_ANOMALY"],
+    df_final["FINAL_ANOMALY_FLAG"],
+    "Confusion Matrix – Hybrid (Rule + ML) Detection"
+)
+
 
 print()
 print("Artifacts written to:", ARTIFACT_DIR)
